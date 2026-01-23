@@ -250,8 +250,66 @@ def process_nlp(df):
     df['Entities'] = entities_list
     df['Locations'] = locations_list # Yeni kolon
     return df
+# --- INTELLIGENCE SUMMARIZER (3-SENTENCE SUMMARY) ---
+def get_intel_summary(df):
+    if df.empty:
+        return ["No intelligence data available for processing."]
+    
+    # Kelime analizi için metinleri birleştir
+    all_text = " ".join(df['Title']).lower()
+    words = re.findall(r'\b\w{5,15}\b', all_text)
+    
+    stop_words = {'about', 'after', 'before', 'could', 'should', 'would', 'their', 'there', 'which', 'musk', 'elon'}
+    meaningful_words = [w for w in words if w not in stop_words]
+    word_freq = Counter(meaningful_words).most_common(5)
+    
+    keywords = [w[0].upper() for w in word_freq] if word_freq else ["GENERAL", "TOPICS"]
+    
+    # En uçtaki haberleri çek
+    top_pos = df.nlargest(1, 'Polarity')['Title'].values[0] if not df[df['Polarity'] > 0].empty else "Positive sentiment detected."
+    top_neg = df.nsmallest(1, 'Polarity')['Title'].values[0] if not df[df['Polarity'] < 0].empty else "No significant friction points."
 
-# --- 3D MAP GENERATOR ---
+    summary = [
+        f"🎯 Main strategic focus is currently revolving around <b>{keywords[0]}</b> and <b>{keywords[1] if len(keywords)>1 else 'related sectors'}</b>.",
+        f"📈 Highlight of interest: \"{top_pos[:80]}...\"",
+        f"⚠️ Critical friction point: \"{top_neg[:80]}...\""
+    ]
+    return summary
+
+# --- AI BRIEFING GENERATOR (GÜNCEL VERSİYON) ---
+def generate_ai_briefing(df, topic):
+    avg_sentiment = df['Polarity'].mean()
+    status = "STABLE"
+    status_color = "#ffff00"
+    
+    if avg_sentiment > 0.1:
+        status = "OPTIMAL"
+        status_color = "#00f2ea"
+    elif avg_sentiment < -0.05:
+        status = "CRITICAL"
+        status_color = "#ff0055"
+
+    intel_points = get_intel_summary(df)
+    summary_html = "".join([f"<li style='margin-bottom:8px;'>{point}</li>" for point in intel_points])
+
+    html = f"""
+    <div class="ai-terminal">
+        <div class="ai-header">
+            <span>>_ MISSION BRIEFING: {topic.upper()}</span>
+            <span style="color: {status_color}; text-shadow: 0 0 10px {status_color};">STATUS: {status} <span class="blink">●</span></span>
+        </div>
+        <div class="ai-content">
+            <span style="color: #888;">// EXECUTING TEXT-MINING ALGORITHM...</span><br>
+            <ul style="list-style-type: square; padding-left: 20px; margin-top: 10px; color: #00f2ea;">
+                {summary_html}
+            </ul>
+            <br>
+            <i style="color: #666;">Commander, system is ready for the next query.</i>
+        </div>
+    </div>
+    """
+    return html
+# --- 3D MAP GENERATOR (DÜZELTİLDİ) ---
 def generate_geo_map(df):
     # Lokasyon verilerini düzleştir
     flat_locs = []
@@ -287,8 +345,8 @@ def generate_geo_map(df):
             autocolorscale = False,
             symbol = 'circle',
             line = dict(width=1, color='rgba(102, 102, 102)'),
-            color = grouped['Color'], # Duygu rengi
-            shadow = False
+            color = grouped['Color'] # Duygu rengi
+            # shadow = False  <--- BU SATIR HATALIYDI VE SİLİNDİ
         )
     ))
 
@@ -438,6 +496,10 @@ if run_btn:
             df = process_nlp(raw_df)
         
         st.markdown("<br>", unsafe_allow_html=True)
+
+        # Bu satır AI özetini ekrana basan ana komuttur
+        ai_briefing_html = generate_ai_briefing(df, topic)
+        st.markdown(ai_briefing_html, unsafe_allow_html=True)
         
         # KPI CARDS
         k1, k2, k3 = st.columns(3)
