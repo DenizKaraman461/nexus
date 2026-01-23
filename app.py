@@ -47,11 +47,13 @@ except FileNotFoundError:
 @st.cache_resource
 def load_nlp():
     try:
+        # Model requirements.txt sayesinde zaten yüklü gelecek
         return spacy.load("en_core_web_sm")
     except OSError:
-        # Model requirements.txt ile yüklenmediyse uyarı verelim
         st.error("Model bulunamadı. Lütfen requirements.txt dosyasına model linkini eklediğinizden emin olun.")
         return None
+
+# --- BUNU SAKIN UNUTMA ---
 nlp = load_nlp()
     
 # --- GLOBAL COORDINATES DATABASE (SIMPLE) ---
