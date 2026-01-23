@@ -46,10 +46,14 @@ except FileNotFoundError:
 # --- YENİ HALİ (YAPIŞTIRILACAK) ---
 @st.cache_resource
 def load_nlp():
-    return spacy.load("en_core_web_sm")
-
+    try:
+        return spacy.load("en_core_web_sm")
+    except OSError:
+        # Model requirements.txt ile yüklenmediyse uyarı verelim
+        st.error("Model bulunamadı. Lütfen requirements.txt dosyasına model linkini eklediğinizden emin olun.")
+        return None
 nlp = load_nlp()
-
+    
 # --- GLOBAL COORDINATES DATABASE (SIMPLE) ---
 # Ekstra kütüphane (geopy) kurdurmamak için temel koordinatları gömüyoruz.
 COUNTRY_COORDS = {
