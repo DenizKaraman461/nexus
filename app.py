@@ -18,7 +18,7 @@ import re
 import base64
 
 # --- 1. SETTINGS ---
-st.set_page_config(page_title="NEXUS PRIME", layout="wide", page_icon="🧿")
+st.set_page_config(page_title="NEXUS PRIME", layout="wide", page_icon="N")
 
 # --- BACKGROUND LOADER ---
 def set_background(image_file):
@@ -43,14 +43,10 @@ try:
 except FileNotFoundError:
     pass
 
+# --- YENİ HALİ (YAPIŞTIRILACAK) ---
 @st.cache_resource
 def load_nlp():
-    model_name = "en_core_web_sm"
-    try:
-        return spacy.load(model_name)
-    except OSError:
-        subprocess.check_call([sys.executable, "-m", "spacy", "download", model_name])
-        return spacy.load(model_name)
+    return spacy.load("en_core_web_sm")
 
 nlp = load_nlp()
 
