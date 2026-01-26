@@ -1,3 +1,4 @@
+import google.generativeai as genai
 streamlit
 pandas
 feedparser
