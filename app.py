@@ -47,6 +47,7 @@ def load_nlp():
     try:
         return spacy.load("en_core_web_sm")
     except OSError:
+        st.error("Model yüklenemedi. requirements.txt dosyasını kontrol edin.")
         return None
 
 nlp = load_nlp()
