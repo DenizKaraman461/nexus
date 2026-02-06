@@ -1,4 +1,3 @@
-import google.generativeai as genai
 import streamlit as st
 import pandas as pd
 import feedparser
@@ -13,45 +12,49 @@ import streamlit.components.v1 as components
 from collections import Counter
 import tempfile
 import os
-import sys
-import subprocess
 import re
 import base64
+from pathlib import Path
 
+# --- Configuration ---
 st.set_page_config(page_title="NEXUS PRIME", layout="wide", page_icon="N")
 
 def set_background(image_file):
-    with open(image_file, "rb") as f:
-        data = base64.b64encode(f.read()).decode()
-    
-    css = f"""
-    <style>
-    .stApp {{
-        background-image: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url("data:image/jpeg;base64,{data}");
-        background-size: cover;
-        background-position: center center;
-        background-repeat: no-repeat;
-        background-attachment: fixed;
-    }}
-    </style>
-    """
-    st.markdown(css, unsafe_allow_html=True)
+    """Sets the background image of the Streamlit app safely."""
+    try:
+        with open(image_file, "rb") as f:
+            data = base64.b64encode(f.read()).decode()
+        
+        css = f"""
+        <style>
+        .stApp {{
+            background-image: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url("data:image/jpeg;base64,{data}");
+            background-size: cover;
+            background-position: center center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+        }}
+        </style>
+        """
+        st.markdown(css, unsafe_allow_html=True)
+    except FileNotFoundError:
+        pass
 
-try:
-    set_background('nexus_background.jpeg')
-except FileNotFoundError:
-    pass
+# Initialize background
+set_background('nexus_background.jpeg')
 
 @st.cache_resource
 def load_nlp():
+    """Loads the spaCy NLP model."""
     try:
         return spacy.load("en_core_web_sm")
     except OSError:
-        st.error("Model yüklenemedi. requirements.txt dosyasını kontrol edin.")
+        st.error("Model failed to load. Please run this command in your terminal: python -m spacy download en_core_web_sm")
         return None
 
 nlp = load_nlp()
     
+# Coordinates for geopolitical mapping
 COUNTRY_COORDS = {
     "USA": [37.0902, -95.7129], "US": [37.0902, -95.7129], "America": [37.0902, -95.7129],
     "China": [35.8617, 104.1954], "Beijing": [39.9042, 116.4074],
@@ -73,6 +76,7 @@ COUNTRY_COORDS = {
     "Saudi Arabia": [23.8859, 45.0792], "UAE": [23.4241, 53.8478], "Dubai": [25.2048, 55.2708]
 }
 
+# Custom CSS for UI styling
 st.markdown("""
 <style>
         .nexus-title { font-family: 'Helvetica', sans-serif !important; font-weight: 900 !important; font-size: 4.5rem !important; color: transparent !important; -webkit-text-stroke: 1px #ffffff; text-shadow: 0 0 30px rgba(255, 255, 255, 0.5) !important; margin: 0 !important; padding: 0 !important; line-height: 1 !important; white-space: nowrap; }
@@ -92,13 +96,15 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def clean_html(raw_html):
+    """Removes HTML tags and URLs from text."""
     cleanr = re.compile('<.*?>')
     cleantext = re.sub(cleanr, '', raw_html)
     cleantext = re.sub(r'http\S+', '', cleantext)
     return cleantext.strip()
 
 def fetch_news(topic):
-    search_queries = [topic, f"{topic} noticias"]
+    """Fetches RSS news feeds from Google News."""
+    search_queries = [topic, f"{topic} news"]
     all_data = []
     for q in search_queries:
         try:
@@ -120,10 +126,14 @@ def fetch_news(topic):
     return pd.DataFrame(all_data).drop_duplicates(subset=['Title'])
 
 def process_nlp(df):
+    """Performs Sentiment Analysis and Named Entity Recognition (NER)."""
+    # Sentiment Analysis with TextBlob
     df['Polarity'] = df['Title'].apply(lambda x: TextBlob(x).sentiment.polarity)
     df['Sentiment'] = df['Polarity'].apply(lambda s: "Positive" if s > 0.05 else ("Negative" if s < -0.05 else "Neutral"))
+    
     entities_list = []
     locations_list = [] 
+    
     for i, row in df.iterrows():
         full_text = f"{row['Title']} {row['Summary']}"
         doc = nlp(full_text)
@@ -138,11 +148,13 @@ def process_nlp(df):
                 locs.append(text)
         entities_list.append(list(set(ents)))
         locations_list.append(list(set(locs)))
+    
     df['Entities'] = entities_list
     df['Locations'] = locations_list 
     return df
 
 def get_intel_summary(df):
+    """Generates a rule-based intelligence summary."""
     if df.empty: return ["No intelligence data."]
     all_text = " ".join(df['Title']).lower()
     words = re.findall(r'\b\w{5,15}\b', all_text)
@@ -150,8 +162,10 @@ def get_intel_summary(df):
     meaningful_words = [w for w in words if w not in stop_words]
     word_freq = Counter(meaningful_words).most_common(5)
     keywords = [w[0].upper() for w in word_freq] if word_freq else ["GENERAL", "TOPICS"]
+    
     top_pos = df.nlargest(1, 'Polarity')['Title'].values[0] if not df[df['Polarity'] > 0].empty else "Positive sentiment detected."
     top_neg = df.nsmallest(1, 'Polarity')['Title'].values[0] if not df[df['Polarity'] < 0].empty else "No significant friction points."
+    
     summary = [
         f"🎯 Main strategic focus is currently revolving around <b>{keywords[0]}</b> and <b>{keywords[1] if len(keywords)>1 else 'related sectors'}</b>.",
         f"📈 Highlight of interest: \"{top_pos[:80]}...\"",
@@ -160,13 +174,16 @@ def get_intel_summary(df):
     return summary
 
 def generate_ai_briefing(df, topic):
+    """Generates the HTML briefing card."""
     avg_sentiment = df['Polarity'].mean()
     status = "STABLE"
     status_color = "#ffff00" 
     if avg_sentiment > 0.1: status = "OPTIMAL"; status_color = "#00f2ea"
     elif avg_sentiment < -0.05: status = "CRITICAL"; status_color = "#ff0055"
+    
     intel_points = get_intel_summary(df)
     summary_html = "".join([f"<li style='margin-bottom:8px;'>{point}</li>" for point in intel_points])
+    
     html = f"""
     <div style="background-color: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 20px; padding: 20px; margin-bottom: 25px; backdrop-filter: blur(10px); box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);">
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 10px; margin-bottom: 15px;">
@@ -186,26 +203,32 @@ def generate_ai_briefing(df, topic):
     return html
 
 def generate_geo_map(df):
+    """Generates the 3D Globe map."""
     flat_locs = []
     for i, row in df.iterrows():
         for loc in row['Locations']:
             flat_locs.append({'Location': loc, 'Polarity': row['Polarity'], 'Title': row['Title']})
+    
     if not flat_locs: return None
+    
     geo_df = pd.DataFrame(flat_locs)
     grouped = geo_df.groupby('Location').agg({'Polarity': 'mean', 'Title': 'count'}).reset_index()
     grouped['lat'] = grouped['Location'].apply(lambda x: COUNTRY_COORDS[x][0])
     grouped['lon'] = grouped['Location'].apply(lambda x: COUNTRY_COORDS[x][1])
     grouped['Color'] = grouped['Polarity'].apply(lambda x: '#00f2ea' if x > 0 else '#ff0055')
+    
     fig = go.Figure(data=go.Scattergeo(
         lon = grouped['lon'], lat = grouped['lat'],
         text = grouped['Location'] + "<br>News Count: " + grouped['Title'].astype(str),
         mode = 'markers',
         marker = dict(size = grouped['Title'] * 5 + 5, opacity = 0.8, reversescale = True, autocolorscale = False, symbol = 'circle', line = dict(width=1, color='rgba(102, 102, 102)'), color = grouped['Color'])
     ))
+    
     fig.update_layout(title = '', geo = dict(scope='world', projection_type='orthographic', showland = True, landcolor = "rgb(20, 20, 20)", showocean = True, oceancolor = "rgba(0,0,0,0)", showlakes = True, lakecolor = "rgb(0, 0, 0)", showcountries = True, countrycolor = "rgb(50, 50, 50)", bgcolor= "rgba(0,0,0,0)"), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=0, b=0), height=600)
     return fig
 
 def generate_network_html(df):
+    """Generates the Entity Network Graph."""
     G = nx.Graph()
     for entities in df['Entities']:
         for entity in entities:
@@ -215,27 +238,35 @@ def generate_network_html(df):
                 for j in range(i + 1, len(entities)):
                     if G.has_edge(entities[i], entities[j]): G[entities[i]][entities[j]]['weight'] += 1
                     else: G.add_edge(entities[i], entities[j], weight=1)
+    
     if len(G.nodes) == 0: return None
+    
     net = Network(height="650px", width="100%", bgcolor="#000000", font_color="white", select_menu=False, filter_menu=False, cdn_resources='remote')
     net.from_nx(G)
     for node in net.nodes:
         node['shape'] = 'dot'; node['size'] = 25; node['shadow'] = {'enabled': True, 'color': '#00f2ea', 'size': 30, 'x': 0, 'y': 0}
         node['color'] = {'background': '#000000', 'border': '#00f2ea', 'highlight': {'background': '#00f2ea', 'border': '#ffffff'}, 'hover': {'background': '#333333', 'border': '#ffffff'}}
         node['borderWidth'] = 3; node['font'] = {'color': 'white', 'size': 16, 'face': 'arial', 'strokeWidth': 4, 'strokeColor': '#000000', 'vadjust': -35}
+    
     net.set_options("""{"edges": {"color": {"color": "rgba(0, 242, 234, 0.3)", "highlight": "#ffffff", "inherit": false}, "smooth": {"type": "continuous", "roundness": 0.5}, "width": 1}, "physics": {"forceAtlas2Based": {"gravitationalConstant": -80, "centralGravity": 0.01, "springLength": 150, "springConstant": 0.08, "damping": 0.4}, "minVelocity": 0.75, "solver": "forceAtlas2Based"}}""")
+    
     try:
         path = os.path.join(tempfile.gettempdir(), "nexus_network.html")
         net.save_graph(path)
         with open(path, 'r', encoding='utf-8', errors='replace') as f: return f.read()
     except: return None
 
+# --- Main UI Layout ---
 c_title, c_input, c_btn = st.columns([2.5, 3, 0.7])
+
 with c_title:
     st.markdown('<h1 class="nexus-title">𝐍𝐄𝐗𝐔𝐒</h1>', unsafe_allow_html=True)
     st.markdown('<p style="color:#ccc; text-shadow: 1px 1px 2px black; font-size: 0.9rem;">Advanced OSINT & Relationship Analyzer</p>', unsafe_allow_html=True)
+
 with c_input:
     st.markdown('<div style="margin-top: 20px;"></div>', unsafe_allow_html=True)
     topic = st.text_input("Search", "Elon Musk", label_visibility="collapsed", placeholder="Enter target...")
+
 with c_btn:
     st.markdown('<div style="margin-top: 20px;"></div>', unsafe_allow_html=True)
     run_btn = st.button("🚀", type="primary", use_container_width=True)
@@ -261,16 +292,18 @@ if 'df' in st.session_state:
     
     k1, k2, k3 = st.columns(3)
     k1.metric("𝐒𝐎𝐔𝐑𝐂𝐄𝐒", len(df))
+    
     mean_polarity = df['Polarity'].mean()
     if mean_polarity > 0.05: k2.metric("𝐆𝐋𝐎𝐁𝐀𝐋 𝐒𝐄𝐍𝐓𝐈𝐌𝐄𝐍𝐓", f"{mean_polarity:.2f}", delta="+ Positive Trend")
     elif mean_polarity < -0.05: k2.metric("𝐆𝐋𝐎𝐁𝐀𝐋 𝐒𝐄𝐍𝐓𝐈𝐌𝐄𝐍𝐓", f"{mean_polarity:.2f}", delta="- Negative Trend", delta_color="inverse")
     else: k2.metric("𝐆𝐋𝐎𝐁𝐀𝐋 𝐒𝐄𝐍𝐓𝐈𝐌𝐄𝐍𝐓", f"{mean_polarity:.2f}", delta="• Neutral", delta_color="off")
+    
     all_ents = [e for sub in df['Entities'] for e in sub]
     k3.metric("𝐃𝐄𝐓𝐄𝐂𝐓𝐄𝐃 𝐄𝐍𝐓𝐈𝐓𝐈𝐄𝐒", len(set(all_ents)))
     
     st.divider()
     
-    tab_charts, tab_map, tab_chat, tab_network = st.tabs(["📊 𝐆𝐑𝐀𝐏𝐇𝐒", "🌍 𝐆𝐄𝐎-𝐌𝐀𝐏", "💬 𝐀𝐈 𝐂𝐇𝐀𝐓", "🕸️ 𝐍𝐄𝐓𝐖𝐎𝐑𝐊"])
+    tab_charts, tab_map, tab_network = st.tabs(["📊 𝐆𝐑𝐀𝐏𝐇𝐒", "🌍 𝐆𝐄𝐎-𝐌𝐀𝐏", "🕸️ 𝐍𝐄𝐓𝐖𝐎𝐑𝐊"])
     
     with tab_charts:
         col_chart1, col_chart2 = st.columns([2, 1])
@@ -293,64 +326,6 @@ if 'df' in st.session_state:
         map_fig = generate_geo_map(df)
         if map_fig: st.plotly_chart(map_fig, use_container_width=True)
         else: st.warning("No geospatial data detected.")
-
-    with tab_chat:
-        st.markdown('<div style="margin-top: 20px;"></div>', unsafe_allow_html=True)
-        
-        try:
-            api_key = st.secrets["GEMINI_API_KEY"]
-        except:
-            api_key = "AIzaSyClfxPNSXzHWY7ySS4rsPmetn-Kj76Bp2g" 
-
-        genai.configure(api_key=api_key)
-        try:
-            active_model_name = 'gemini-pro' 
-            for m in genai.list_models():
-                if 'generateContent' in m.supported_generation_methods:
-                    active_model_name = m.name
-                    break
-            model = genai.GenerativeModel(active_model_name)
-        except:
-            model = genai.GenerativeModel('gemini-1.5-flash')
-
-        user_question = st.text_input("Sistem verileri hakkında her şeyi sorabilirsin:", placeholder="Örn: Bu haberlerin siber güvenlik dünyasına etkisi nedir?")
-        
-        if user_question:
-            with st.spinner("Nexus derin analiz yapıyor..."):
-                context = "\n".join(df['Title'].head(40).tolist())
-                prompt = f"""
-                Sen NEXUS isimli profesyonel bir OSINT asistanısın. 
-                HABERLER: {context}
-                SORU: {user_question}
-                Cevabın profesyonel ve analitik olsun.
-                """
-                try:
-                    response = model.generate_content(prompt)
-                    
-                    chat_html = f"""
-                    <div style="
-                        background-color: rgba(0, 0, 0, 0.3); 
-                        backdrop-filter: blur(10px); 
-                        border: 1px solid rgba(255, 255, 255, 0.5); 
-                        border-radius: 15px; 
-                        padding: 20px; 
-                        margin-top: 10px;
-                        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-                        color: #e0e0e0;
-                        font-family: 'Helvetica', sans-serif;
-                    ">
-                        <div style="display: flex; align-items: center; margin-bottom: 10px;">
-                            <span style="font-size: 1.5rem; margin-right: 10px;">🤖</span>
-                            <span style="font-weight: bold; color: #ffffff; letter-spacing: 1px;">NEXUS AI ANALYST</span>
-                        </div>
-                        <div style="line-height: 1.6; font-size: 1rem;">
-                            {response.text}
-                        </div>
-                    </div>
-                    """
-                    st.markdown(chat_html, unsafe_allow_html=True)
-                except Exception as e:
-                    st.error(f"🛑 HATA: {e}")
 
     with tab_network:
         html = generate_network_html(df)
