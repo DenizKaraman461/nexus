@@ -16,11 +16,9 @@ import re
 import base64
 from pathlib import Path
 
-# --- Configuration ---
 st.set_page_config(page_title="NEXUS PRIME", layout="wide", page_icon="N")
 
 def set_background(image_file):
-    """Sets the background image of the Streamlit app safely."""
     try:
         with open(image_file, "rb") as f:
             data = base64.b64encode(f.read()).decode()
@@ -40,23 +38,19 @@ def set_background(image_file):
     except FileNotFoundError:
         pass
 
-# Initialize background
 set_background('nexus_background.jpeg')
 
 @st.cache_resource
 def load_nlp():
-    """Loads the spaCy NLP model, downloading it if necessary."""
     try:
         return spacy.load("en_core_web_sm")
     except OSError:
-        # Eğer model yoksa, terminal komutu yerine Python içinden indiriyoruz
         from spacy.cli import download
         download("en_core_web_sm")
         return spacy.load("en_core_web_sm")
 
 nlp = load_nlp()
     
-# Coordinates for geopolitical mapping
 COUNTRY_COORDS = {
     "USA": [37.0902, -95.7129], "US": [37.0902, -95.7129], "America": [37.0902, -95.7129],
     "China": [35.8617, 104.1954], "Beijing": [39.9042, 116.4074],
@@ -78,7 +72,6 @@ COUNTRY_COORDS = {
     "Saudi Arabia": [23.8859, 45.0792], "UAE": [23.4241, 53.8478], "Dubai": [25.2048, 55.2708]
 }
 
-# Custom CSS for UI styling
 st.markdown("""
 <style>
         .nexus-title { font-family: 'Helvetica', sans-serif !important; font-weight: 900 !important; font-size: 4.5rem !important; color: transparent !important; -webkit-text-stroke: 1px #ffffff; text-shadow: 0 0 30px rgba(255, 255, 255, 0.5) !important; margin: 0 !important; padding: 0 !important; line-height: 1 !important; white-space: nowrap; }
@@ -98,14 +91,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def clean_html(raw_html):
-    """Removes HTML tags and URLs from text."""
     cleanr = re.compile('<.*?>')
     cleantext = re.sub(cleanr, '', raw_html)
     cleantext = re.sub(r'http\S+', '', cleantext)
     return cleantext.strip()
 
 def fetch_news(topic):
-    """Fetches RSS news feeds from Google News."""
     search_queries = [topic, f"{topic} news"]
     all_data = []
     for q in search_queries:
@@ -128,8 +119,6 @@ def fetch_news(topic):
     return pd.DataFrame(all_data).drop_duplicates(subset=['Title'])
 
 def process_nlp(df):
-    """Performs Sentiment Analysis and Named Entity Recognition (NER)."""
-    # Sentiment Analysis with TextBlob
     df['Polarity'] = df['Title'].apply(lambda x: TextBlob(x).sentiment.polarity)
     df['Sentiment'] = df['Polarity'].apply(lambda s: "Positive" if s > 0.05 else ("Negative" if s < -0.05 else "Neutral"))
     
@@ -156,7 +145,6 @@ def process_nlp(df):
     return df
 
 def get_intel_summary(df):
-    """Generates a rule-based intelligence summary."""
     if df.empty: return ["No intelligence data."]
     all_text = " ".join(df['Title']).lower()
     words = re.findall(r'\b\w{5,15}\b', all_text)
@@ -176,7 +164,6 @@ def get_intel_summary(df):
     return summary
 
 def generate_ai_briefing(df, topic):
-    """Generates the HTML briefing card."""
     avg_sentiment = df['Polarity'].mean()
     status = "STABLE"
     status_color = "#ffff00" 
@@ -205,7 +192,6 @@ def generate_ai_briefing(df, topic):
     return html
 
 def generate_geo_map(df):
-    """Generates the 3D Globe map."""
     flat_locs = []
     for i, row in df.iterrows():
         for loc in row['Locations']:
@@ -230,7 +216,6 @@ def generate_geo_map(df):
     return fig
 
 def generate_network_html(df):
-    """Generates the Entity Network Graph."""
     G = nx.Graph()
     for entities in df['Entities']:
         for entity in entities:
@@ -258,7 +243,6 @@ def generate_network_html(df):
         with open(path, 'r', encoding='utf-8', errors='replace') as f: return f.read()
     except: return None
 
-# --- Main UI Layout ---
 c_title, c_input, c_btn = st.columns([2.5, 3, 0.7])
 
 with c_title:
