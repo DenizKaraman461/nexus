@@ -45,12 +45,14 @@ set_background('nexus_background.jpeg')
 
 @st.cache_resource
 def load_nlp():
-    """Loads the spaCy NLP model."""
+    """Loads the spaCy NLP model, downloading it if necessary."""
     try:
         return spacy.load("en_core_web_sm")
     except OSError:
-        st.error("Model failed to load. Please run this command in your terminal: python -m spacy download en_core_web_sm")
-        return None
+        # Eğer model yoksa, terminal komutu yerine Python içinden indiriyoruz
+        from spacy.cli import download
+        download("en_core_web_sm")
+        return spacy.load("en_core_web_sm")
 
 nlp = load_nlp()
     

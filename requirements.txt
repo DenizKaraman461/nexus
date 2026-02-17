@@ -3,7 +3,6 @@ pandas
 feedparser
 textblob
 plotly
-spacy>=3.7.0,<3.8.0
+spacy==3.7.4
 networkx
 pyvis
-https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1.tar.gz#egg=en_core_web_sm
